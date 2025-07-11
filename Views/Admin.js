@@ -68,8 +68,12 @@ export const Admin = () => {
                 </View>
 
                 <View>
-                    <Pressable style={styles.createClientButton} onPress={() => navigation.navigate("createClient")}>
+                    <Pressable style={styles.actionsButton} onPress={() => navigation.navigate("createClient")}>
                         <Text style={styles.textCreateClient}>Crear cliente</Text>
+                    </Pressable>
+
+                    <Pressable style={styles.actionsButton} onPress={() => navigation.navigate("createOrder")}>
+                        <Text style={styles.textCreateClient}>Crear orden</Text>
                     </Pressable>
                 </View>
             </View>
@@ -166,10 +170,14 @@ const styles = StyleSheet.create({
     backgroundColor:"#c1121f",
     borderRadius:8
    },
-   createClientButton:{
+   actionsButton:{
     backgroundColor:"#03045e",
-    borderRadius:8,
-    marginBottom:15
+    borderRadius:6,
+    marginBottom:15,
+    width:100,
+    height:30,
+    alignItems:"center",
+    justifyContent:"center"
    },
    textCreateClient:{
     color:"#fff"
