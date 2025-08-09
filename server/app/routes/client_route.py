@@ -1,5 +1,5 @@
 from flask import jsonify, request, Blueprint
-from app.controllers.client_controller import create_client, search_client_by_name, search_client_by_phone, delete_client, update_client
+from app.controllers.client_controller import create_client, search_client_by_name, search_client_by_phone, delete_client, update_client, search_clients
 
 client_bp = Blueprint("client_bp", __name__, url_prefix="/clients")
 
@@ -40,6 +40,24 @@ def search_by_phone():
         return jsonify({"error":"Cliente no encontrado"}), 400
     return jsonify(client.to_dict()), 200
 
+@client_bp.route("/search", methods=["GET"])
+def search():
+    filter = request.args.get("filter")
+    parameter = request.args.get("parameter")
+
+    if filter and parameter:
+        if filter == "name":
+            clients = search_client_by_name(parameter)
+        elif filter == "phone":
+            clients = search_client_by_phone(parameter)
+        else:
+            return jsonify({"msg":"Filtro desconocido"}),400
+    else:
+        clients = search_clients()
+    return [client.to_dict() for client in clients]   
+    
+    
+
 @client_bp.route("/update/<int:client_id>", methods=["PUT"])
 def update(client_id):
     data = request.json
@@ -55,3 +73,4 @@ def delete(client_id):
     if not client:
         return jsonify({"error":"Cliente no encontrado"}),400
     return jsonify({"msg":"Cliente eliminado con exito"}), 200
+

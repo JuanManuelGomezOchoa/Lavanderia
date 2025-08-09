@@ -11,7 +11,7 @@ class Client(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now())
 
     #Relaciones inversas
-    orders = db.relationship("Order", backref="client", lazy=True)
+    orders = db.relationship("Order", backref="clients", lazy=True)
 
     def to_dict(self, orders:bool=False):
         client = {

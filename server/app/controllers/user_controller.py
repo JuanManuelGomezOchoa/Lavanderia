@@ -47,3 +47,14 @@ def toggle_user_status(user_id, is_active:str):
 def get_user_logs(user_id):
     logs =  Log.query.filter_by(user_id=user_id).order_by(Log.date.desc()).all()
     return logs
+
+def get_users():
+    return User.query.filter().all()
+
+def delete_user(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return None
+    db.session.delete(user)
+    db.session.commit()
+    return user

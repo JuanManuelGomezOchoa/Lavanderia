@@ -9,7 +9,7 @@ class Service(db.Model):
     garment_link = db.relationship("OrderDetail", backref="Service", lazy = True)
     
     def to_dict(self, garment_link:bool=False):
-        """ service = {
+        service = {
             'id':self.id,
             'name':self.name,
             'description':self.description,
@@ -18,5 +18,4 @@ class Service(db.Model):
         }
         if garment_link:
             service['garment_link'] = self.garment_link
-        return service """
-        return self.__dict__
+        return service

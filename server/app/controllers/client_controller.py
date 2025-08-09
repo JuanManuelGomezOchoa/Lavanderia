@@ -12,7 +12,10 @@ def search_client_by_name(name):
 
 
 def search_client_by_phone(phone):
-    return Client.query.filter_by(phone_number = phone).first()
+    return Client.query.filter(Client.phone_number.ilike(f"%{phone}%")).all()
+
+def search_clients():
+    return Client.query.filter().all()
 
 def update_client(client_id, updated_data):
     client = Client.query.get(client_id)

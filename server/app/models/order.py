@@ -15,7 +15,7 @@ class Order(db.Model):
     pagado = db.Column(db.Boolean, default=False)
     #Relaciones inversas pendientes 
 
-    garments = db.relationship("Garment", backref = "order", lazy = True)
+    
     #Relacion de pago
 
     def to_dict(self, garments:bool = False):

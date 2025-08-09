@@ -3,18 +3,8 @@ import { View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Alert 
 import { Picker } from '@react-native-picker/picker';
 
 export const CreateOrder = () => {
-  const services = [
-    { name: 'Lavado', quantity: 0, unitPrice: 22, description: 'Lavado estandar' },
-    { name: 'Planchado', quantity: 0, unitPrice: 60, description: 'Planchado profesional' },
-    { name: 'Tintoreria', quantity: 0, unitPrice: 0, description: 'Servicio de tintoreria' },
-    { name: 'Especial', quantity: 0, unitPrice: 0, description: 'Servicio especial' },
-  ];
-
-  const garments = [
-    'Camisa', 'Pantalon', 'Prenda Interior', 'Blusa', 'Vestido',
-    'Chamarra', 'Traje', 'Sueter', 'Falda', 'Saco', 'Playera'
-  ];
-
+  const [services, setServices] = useState([]);
+  const [garments, setGarments] = useState([]);
   const [order, setOrder] = useState({
     client_id: 1,
     user_id: 1,
@@ -22,49 +12,112 @@ export const CreateOrder = () => {
     state: 'recibido',
     total_price: 0,
     pagado: false,
-    garments: [{
-      type: 'Camisa',
-      description: '',
-      notes: '',
-      services: [{ ...services[0] }],
-    }],
+    garments: [],
   });
 
   useEffect(() => {
+    // Cargar servicios y prendas desde API
+    fetch('https://5f1dkwj7-5000.usw3.devtunnels.ms/orders/services')
+      .then(res => res.json())
+      .then(data => {
+        if (data.services) {
+          // Aseguramos que quantity y unitPrice inicien en 0
+          const servicesWithQty = data.services.map(s => ({ 
+            ...s, 
+            quantity: 0,
+            unitPrice: s.unitPrice || 0 
+          }));
+          setServices(servicesWithQty);
+        }
+      })
+      .catch(() => Alert.alert('Error', 'No se pudieron cargar los servicios'));
+
+    fetch('https://5f1dkwj7-5000.usw3.devtunnels.ms/orders/garments')
+      .then(res => res.json())
+      .then(data => {
+        if (data.garments) {
+          setGarments(data.garments);
+        }
+      })
+      .catch(() => Alert.alert('Error', 'No se pudieron cargar las prendas'));
+  }, []);
+
+  useEffect(() => {
+    // Cuando ya tenemos prendas y servicios, inicializar order.garments si está vacío
+    if (services.length > 0 && garments.length > 0 && order.garments.length === 0) {
+      setOrder(prev => ({
+        ...prev,
+        garments: [{
+          type: garments[0].type || garments[0].name || 'Sin tipo',
+          description: '',
+          notes: '',
+          services: [{ 
+            ...services[0],
+            quantity: 0,
+            unitPrice: services[0].unitPrice || 0 
+          }],
+        }],
+      }));
+    }
+  }, [services, garments]);
+
+  useEffect(() => {
+    calculateTotal();
+  }, [order.garments]);
+
+  const calculateTotal = () => {
     let total = 0;
     order.garments.forEach(garment => {
       garment.services.forEach(service => {
-        total += service.quantity * service.unitPrice;
+        const quantity = Number(service.quantity) || 0;
+        const unitPrice = Number(service.unitPrice) || 0;
+        total += quantity * unitPrice;
       });
     });
     setOrder(prev => ({ ...prev, total_price: total }));
-  }, [order.garments]);
+  };
 
   const addGarment = () => {
     setOrder(prev => ({
       ...prev,
       garments: [...prev.garments, {
-        type: 'Camisa',
+        type: garments[0]?.type || garments[0]?.name || 'Sin tipo',
         description: '',
         notes: '',
-        services: [{ ...services[0] }],
+        services: [{ 
+          ...services[0], 
+          quantity: 0,
+          unitPrice: services[0].unitPrice || 0 
+        }],
       }],
     }));
   };
 
   const deleteGarment = (index) => {
+    if (order.garments.length <= 1) {
+      Alert.alert('Error', 'Debe haber al menos una prenda');
+      return;
+    }
     const newGarments = order.garments.filter((_, i) => i !== index);
     setOrder(prev => ({ ...prev, garments: newGarments }));
   };
 
   const addServiceToGarment = (garmentIndex) => {
     const updatedGarments = [...order.garments];
-    updatedGarments[garmentIndex].services.push({ ...services[0] });
+    updatedGarments[garmentIndex].services.push({ 
+      ...services[0], 
+      quantity: 0,
+      unitPrice: services[0].unitPrice || 0 
+    });
     setOrder(prev => ({ ...prev, garments: updatedGarments }));
   };
 
   const deleteServiceFromGarment = (garmentIndex, serviceIndex) => {
     const updatedGarments = [...order.garments];
+    if (updatedGarments[garmentIndex].services.length <= 1) {
+      Alert.alert('Error', 'Cada prenda debe tener al menos un servicio');
+      return;
+    }
     updatedGarments[garmentIndex].services = updatedGarments[garmentIndex].services.filter((_, i) => i !== serviceIndex);
     setOrder(prev => ({ ...prev, garments: updatedGarments }));
   };
@@ -82,35 +135,37 @@ export const CreateOrder = () => {
       if (newService) {
         updatedGarments[garmentIndex].services[serviceIndex] = {
           ...newService,
-          quantity: updatedGarments[garmentIndex].services[serviceIndex].quantity
+          quantity: updatedGarments[garmentIndex].services[serviceIndex].quantity || 0,
+          unitPrice: newService.unitPrice || 0
         };
       }
     } else {
-      updatedGarments[garmentIndex].services[serviceIndex][key] = isNaN(parseFloat(value)) ? 0 : parseFloat(value);
+      const numericValue = isNaN(parseFloat(value)) ? 0 : parseFloat(value);
+      updatedGarments[garmentIndex].services[serviceIndex][key] = numericValue;
     }
     setOrder(prev => ({ ...prev, garments: updatedGarments }));
+    calculateTotal();
   };
 
   const submitOrder = async () => {
     try {
-      // Preparamos el payload para que coincida con el backend
       const payload = {
         client_id: order.client_id,
         user_id: order.user_id,
         estimated_delivery_date: order.estimated_delivery_date,
         state: order.state,
-        total: order.total_price,  // Cambiado de total_price a total
+        total: order.total_price,
         pagado: order.pagado,
         garments: order.garments.map(garment => ({
           type: garment.type,
           description: garment.description,
-          observations: garment.notes,  // Cambiado de notes a observations
+          observations: garment.notes,
           services: garment.services.map(service => ({
             name: service.name,
-            unitPrice: service.unitPrice,
-            quantity: service.quantity
-          }))
-        }))
+            unitPrice: service.unitPrice || 0,
+            quantity: service.quantity || 0,
+          })),
+        })),
       };
 
       const response = await fetch('https://5f1dkwj7-5000.usw3.devtunnels.ms/orders/create', {
@@ -124,28 +179,34 @@ export const CreateOrder = () => {
       const result = await response.json();
       if (response.ok) {
         Alert.alert('Éxito', `Orden creada con ID: ${result.order_id}`);
-        // Opcional: Resetear el formulario después de éxito
-        setOrder({
-          client_id: 1,
-          user_id: 1,
-          estimated_delivery_date: new Date().toISOString().split('T')[0],
-          state: 'recibido',
-          total_price: 0,
-          pagado: false,
-          garments: [{
-            type: 'Camisa',
-            description: '',
-            notes: '',
-            services: [{ ...services[0] }],
-          }],
-        });
+        resetForm();
       } else {
         Alert.alert('Error', result.msg || 'Error al crear la orden');
       }
     } catch (error) {
       Alert.alert('Error', 'No se pudo conectar al servidor');
-      console.error(error);
     }
+  };
+
+  const resetForm = () => {
+    setOrder({
+      client_id: 1,
+      user_id: 1,
+      estimated_delivery_date: new Date().toISOString().split('T')[0],
+      state: 'recibido',
+      total_price: 0,
+      pagado: false,
+      garments: [{
+        type: garments[0]?.type || garments[0]?.name || 'Sin tipo',
+        description: '',
+        notes: '',
+        services: [{ 
+          ...services[0], 
+          quantity: 0,
+          unitPrice: services[0].unitPrice || 0 
+        }],
+      }],
+    });
   };
 
   return (
@@ -153,18 +214,19 @@ export const CreateOrder = () => {
       <Text style={styles.title}>Crear Orden</Text>
 
       <TouchableOpacity onPress={addGarment} style={styles.addButton}>
-        <Text style={styles.addButtonText}>+ Agregar Prenda</Text>
+        <Text style={styles.buttonText}>+ Agregar Prenda</Text>
       </TouchableOpacity>
 
       {order.garments.map((garment, i) => (
         <View key={i} style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={styles.subtitle}>Prenda #{i + 1}</Text>
-            {i > 0 && (
-              <TouchableOpacity onPress={() => deleteGarment(i)} style={styles.deleteButton}>
-                <Text style={styles.deleteButtonText}>✕ Eliminar</Text>
-              </TouchableOpacity>
-            )}
+            <Text style={styles.cardTitle}>Prenda #{i + 1}</Text>
+            <TouchableOpacity
+              onPress={() => deleteGarment(i)}
+              style={styles.deleteButton}
+            >
+              <Text style={styles.deleteButtonText}>Eliminar</Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={styles.label}>Tipo de prenda:</Text>
@@ -172,10 +234,13 @@ export const CreateOrder = () => {
             <Picker
               selectedValue={garment.type}
               onValueChange={(value) => onChangeGarmentField('type', value, i)}
-              style={styles.picker}
             >
               {garments.map((g, index) => (
-                <Picker.Item key={index} label={g} value={g} />
+                <Picker.Item
+                  key={index}
+                  label={g.type || g.name || 'Sin tipo'}
+                  value={g.type || g.name || 'Sin tipo'}
+                />
               ))}
             </Picker>
           </View>
@@ -185,7 +250,7 @@ export const CreateOrder = () => {
             style={styles.input}
             value={garment.description}
             onChangeText={(text) => onChangeGarmentField('description', text, i)}
-            placeholder="Ej: Camisa blanca de algodón"
+            placeholder="Descripción de la prenda"
           />
 
           <Text style={styles.label}>Notas:</Text>
@@ -193,20 +258,21 @@ export const CreateOrder = () => {
             style={styles.input}
             value={garment.notes}
             onChangeText={(text) => onChangeGarmentField('notes', text, i)}
-            placeholder="Ej: Mancha en la manga derecha"
+            placeholder="Notas adicionales"
+            multiline
           />
 
-          <Text style={[styles.subtitle, {marginTop: 10}]}>Servicios:</Text>
+          <Text style={styles.sectionTitle}>Servicios:</Text>
 
           {garment.services.map((service, is) => (
             <View key={is} style={styles.serviceCard}>
               <View style={styles.serviceHeader}>
                 <Text style={styles.serviceTitle}>Servicio {is + 1}</Text>
-                {is > 0 && (
-                  <TouchableOpacity onPress={() => deleteServiceFromGarment(i, is)}>
-                    <Text style={styles.deleteButtonText}>✕ Eliminar</Text>
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                  onPress={() => deleteServiceFromGarment(i, is)}
+                >
+                  <Text style={styles.deleteButtonText}>Eliminar</Text>
+                </TouchableOpacity>
               </View>
 
               <Text style={styles.label}>Tipo de servicio:</Text>
@@ -214,7 +280,6 @@ export const CreateOrder = () => {
                 <Picker
                   selectedValue={service.name}
                   onValueChange={(value) => onChangeServiceField('name', value, i, is)}
-                  style={styles.picker}
                 >
                   {services.map((s, idx) => (
                     <Picker.Item key={idx} label={s.name} value={s.name} />
@@ -226,7 +291,7 @@ export const CreateOrder = () => {
               <TextInput
                 style={styles.input}
                 keyboardType="numeric"
-                value={String(service.quantity)}
+                value={String(service.quantity || 0)}
                 onChangeText={(text) => onChangeServiceField('quantity', text, i, is)}
               />
 
@@ -234,17 +299,17 @@ export const CreateOrder = () => {
               <TextInput
                 style={styles.input}
                 keyboardType="numeric"
-                value={String(service.unitPrice)}
+                value={String(service.unitPrice || 0)}
                 onChangeText={(text) => onChangeServiceField('unitPrice', text, i, is)}
               />
             </View>
           ))}
 
-          <TouchableOpacity 
-            onPress={() => addServiceToGarment(i)} 
+          <TouchableOpacity
+            onPress={() => addServiceToGarment(i)}
             style={styles.addServiceButton}
           >
-            <Text style={styles.addServiceButtonText}>+ Agregar Servicio</Text>
+            <Text style={styles.buttonText}>+ Agregar Servicio</Text>
           </TouchableOpacity>
         </View>
       ))}
@@ -255,27 +320,25 @@ export const CreateOrder = () => {
       </View>
 
       <TouchableOpacity onPress={submitOrder} style={styles.submitButton}>
-        <Text style={styles.submitButtonText}>Guardar Orden</Text>
+        <Text style={styles.buttonText}>Guardar Orden</Text>
       </TouchableOpacity>
 
-{/*Resumen de la orden */}
-      <View style={styles.ticketContainer}>
-        <Text style={styles.ticketTitle}>RESUMEN DE ORDEN</Text>
-        
+      <View style={styles.summaryContainer}>
+        <Text style={styles.summaryTitle}>RESUMEN DE ORDEN</Text>
+
         {order.garments.map((garment, index) => (
-          <View key={`garment-${index}`} style={styles.ticketGarment}>
-            <Text style={styles.ticketGarmentTitle}>
-              Tipo de prenda: {index} {garment.type}
+          <View key={`summary-${index}`} style={styles.garmentSummary}>
+            <Text style={styles.garmentTitle}>
+              Prenda {index + 1}: {garment.type}
             </Text>
-            
-            <View style={styles.ticketServices}>
+
+            <View style={styles.servicesSummary}>
               {garment.services.map((service, sIndex) => (
-                <View key={`service-${sIndex}`} style={styles.ticketServiceRow}>
-                  <Text style={styles.ticketServiceName}>
-                     {service.name}
-                  </Text>
-                  <Text style={styles.ticketServiceDetails}>
-                    ${service.unitPrice} x {service.quantity} = ${(service.unitPrice * service.quantity).toFixed(2)} {/*El toFixed es para los decimales*/}
+                <View key={`service-${sIndex}`} style={styles.serviceRow}>
+                  <Text style={styles.serviceName}>{service.name}</Text>
+                  <Text style={styles.servicePrice}>
+                    ${service.unitPrice || 0} x {service.quantity || 0} = $
+                    {((service.unitPrice || 0) * (service.quantity || 0)).toFixed(2)}
                   </Text>
                 </View>
               ))}
@@ -283,12 +346,11 @@ export const CreateOrder = () => {
           </View>
         ))}
 
-        <View style={styles.ticketTotal}>
-          <Text style={styles.ticketTotalLabel}>TOTAL:</Text>
-          <Text style={styles.ticketTotalAmount}>${order.total_price.toFixed(2)}</Text>
+        <View style={styles.finalTotal}>
+          <Text style={styles.finalTotalLabel}>TOTAL:</Text>
+          <Text style={styles.finalTotalAmount}>${order.total_price.toFixed(2)}</Text>
         </View>
       </View>
-
     </ScrollView>
   );
 };
@@ -297,44 +359,72 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#caf0f8',
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 20,
-    color: '#333',
+    color: '#03045e',
     textAlign: 'center',
+    marginBottom: 20,
   },
   card: {
-    padding: 16,
-    marginVertical: 8,
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
     borderRadius: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#90e0ef',
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
-  subtitle: {
+  cardTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#444',
+    fontWeight: 'bold',
+    color: '#03045e',
+  },
+  label: {
+    fontSize: 14,
+    color: '#0077b6',
+    marginBottom: 6,
+  },
+  input: {
+    height: 50,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#00b4d8',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    marginBottom: 12,
+    color: '#03045e',
+    fontSize: 16,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: '#00b4d8',
+    borderRadius: 8,
+    marginBottom: 12,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#03045e',
+    marginTop: 12,
+    marginBottom: 8,
   },
   serviceCard: {
-    marginBottom: 12,
-    padding: 12,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#f0f8ff',
     borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: '#90e0ef',
   },
   serviceHeader: {
     flexDirection: 'row',
@@ -343,163 +433,125 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   serviceTitle: {
-    fontWeight: '500',
-    color: '#555',
-  },
-  label: {
-    fontSize: 14,
-    marginBottom: 5,
-    color: '#666',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    padding: 10,
-    marginBottom: 12,
-    backgroundColor: '#fff',
-    fontSize: 15,
-  },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 6,
-    marginBottom: 12,
-    overflow: 'hidden',
-  },
-  picker: {
-    backgroundColor: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#0077b6',
   },
   deleteButton: {
-    padding: 5,
+    padding: 6,
   },
   deleteButtonText: {
-    color: 'red',
+    color: '#c1121f',
     fontSize: 14,
+    fontWeight: '500',
   },
   addButton: {
-    backgroundColor: '#4CAF50',
-    padding: 12,
-    borderRadius: 6,
+    backgroundColor: '#0077b6',
+    borderRadius: 8,
+    padding: 14,
     alignItems: 'center',
-    marginBottom: 15,
-  },
-  addButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+    marginBottom: 16,
   },
   addServiceButton: {
-    backgroundColor: '#2196F3',
-    padding: 10,
-    borderRadius: 6,
+    backgroundColor: '#00b4d8',
+    borderRadius: 8,
+    padding: 12,
     alignItems: 'center',
-    marginTop: 5,
+    marginTop: 8,
   },
-  addServiceButtonText: {
-    color: 'white',
-    fontWeight: '500',
-    fontSize: 14,
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   totalContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 20,
-    padding: 15,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    padding: 16,
+    marginVertical: 12,
+    borderWidth: 1,
+    borderColor: '#90e0ef',
   },
   totalLabel: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: 'bold',
+    color: '#03045e',
   },
   totalAmount: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#4CAF50',
+    color: '#0077b6',
   },
   submitButton: {
-    backgroundColor: '#FF5722',
-    padding: 15,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 15,
-    marginBottom: 30,
-  },
-  submitButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 18,
-  },
-  ticketContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: '#0077b6',
     borderRadius: 8,
     padding: 16,
-    marginVertical: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    alignItems: 'center',
+    marginTop: 12,
+    marginBottom: 24,
   },
-  ticketTitle: {
+  summaryContainer: {
+    backgroundColor: '#ffffff',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#90e0ef',
+  },
+  summaryTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#03045e',
     textAlign: 'center',
     marginBottom: 12,
-    color: '#333',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#90e0ef',
     paddingBottom: 8,
   },
-  ticketGarment: {
+  garmentSummary: {
     marginBottom: 12,
   },
-  ticketGarmentTitle: {
-    fontWeight: '600',
+  garmentTitle: {
     fontSize: 16,
-    color: '#444',
-    marginBottom: 6,
+    fontWeight: '600',
+    color: '#0077b6',
+    marginBottom: 8,
   },
-  ticketServices: {
+  servicesSummary: {
     marginLeft: 8,
   },
-  ticketServiceRow: {
+  serviceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  ticketServiceName: {
-    color: '#666',
-    flex: 2,
+  serviceName: {
+    color: '#03045e',
+    fontSize: 14,
   },
-  ticketServiceDetails: {
-    color: '#666',
-    flex: 1,
-    textAlign: 'right',
+  servicePrice: {
+    color: '#03045e',
+    fontSize: 14,
+    fontWeight: '500',
   },
-  ticketTotal: {
+  finalTotal: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 12,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: '#90e0ef',
   },
-  ticketTotalLabel: {
-    fontWeight: 'bold',
+  finalTotalLabel: {
     fontSize: 16,
+    fontWeight: 'bold',
+    color: '#03045e',
   },
-  ticketTotalAmount: {
-    fontWeight: 'bold',
+  finalTotalAmount: {
     fontSize: 16,
-    color: '#4CAF50',
+    fontWeight: 'bold',
+    color: '#0077b6',
   },
 });
